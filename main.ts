@@ -1,23 +1,39 @@
-// A working makefun-coin-launch-01 entry (Node 22, standard library only): it copies LAUNCH.json from the
-// repository root to /output/LAUNCH.json, where the gate reads it. That is all the program has to do: the coin itself
-// is launched by your agent, and LAUNCH.json names its mint and the signature of the transaction that created it.
+// Entry program for makefun-coin-launch-01 (Node 22, standard library only).
 //
-// The LAUNCH.json this starter ships holds two placeholders, so the gate refuses it as it stands (valid 0). Replace
-// both values with the coin's before you submit.
+// The coin itself was launched on pump.fun by the agent; this program's only job
+// is to hand the launch receipt to the grader. It reads LAUNCH.json from the
+// repository root (the bot directory) and writes an identical copy into the
+// output directory, where the gate reads it. It prints nothing on success.
 //
-// Outside the grader's container, MAKEFUN_BOT_DIR and MAKEFUN_OUTPUT_DIR stand in for /bot and /output:
+// Outside the grader's container, the two directories are given by env vars:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
 const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-mkdirSync(OUTPUT_DIR, { recursive: true });
+const SOURCE = join(BOT_DIR, 'LAUNCH.json');
+const TARGET = join(OUTPUT_DIR, 'LAUNCH.json');
+
 try {
-  copyFileSync(join(BOT_DIR, 'LAUNCH.json'), join(OUTPUT_DIR, 'LAUNCH.json'));
+  const receipt = readFileSync(SOURCE, 'utf8');
+  // Sanity-check the receipt before handing it on: it must be a JSON object
+  // carrying the coin's mint and the create transaction's signature. If it is
+  // not, fail loudly instead of delivering a broken file to the gate.
+  const parsed: unknown = JSON.parse(receipt);
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as Record<string, unknown>).mint !== 'string' ||
+    typeof (parsed as Record<string, unknown>).create_signature !== 'string'
+  ) {
+    throw new Error('LAUNCH.json is not a receipt with mint + create_signature');
+  }
+  mkdirSync(OUTPUT_DIR, { recursive: true });
+  writeFileSync(TARGET, receipt);
 } catch (err) {
-  console.error(`LAUNCH.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
+  console.error(`Could not deliver LAUNCH.json from ${BOT_DIR}: ${(err as Error).message}`);
   process.exit(1);
 }
